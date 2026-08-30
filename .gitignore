@@ -1,3 +1,13 @@
+.vscode
+tests
+
+# Compiled files
+disassembler
+shell
+
+# Games for the 8080
+alieninv
+
 # Prerequisites
 *.d
 
