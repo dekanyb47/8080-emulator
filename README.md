@@ -1,2 +1,7 @@
 # 8080-emulator
-An emulator of Intel's 8080 microcomputer based on Emulator 101 tutorial
+
+## Work in progress!
+
+An emulator of the Intel 8080 microprocessor.
+
+Based on Emulator 101.
