@@ -39,15 +39,24 @@ void unimplentedInstruction()
   exit(1);
 }
 
-int parity(uint8_t r) {
+// TODO: finish
+int parity(uint8_t r, ) {
   return 1;
 }
 
 
-// TODO: finish
+// TODO: keep it consistant where PC is incremented, and where it isn't
 void call_addr(State8080 *state, const uint16_t addr) {
   uint16_t ret_addr = state->PC+2;
   state->memory[state->SP - 1] = (ret_addr >> 8) & 0xff;
+  state->memory[state->SP - 2] = ret_addr & 0xff;
+  state->SP -= 2;
+  state->PC = addr;
+}
+
+void call_return(State8080 *state) {
+  state->PC = (state->memory[state->SP + 1] << 8) | state->memory[state->SP];
+  state->SP += 2;
 }
 
 void direct_load_register_pair(State8080 *state, const unsigned char *opcode, uint8_t *r1, uint8_t *r2) {
@@ -77,7 +86,7 @@ void increment_8bit_register(State8080 *state, uint8_t *r) {
   uint16_t res = (uint16_t)(*r) + 1;
   state->cc.Z = ((res & 0xff) == 0);
   state->cc.S = ((res & 0x80) != 0);
-  state->cc.P = parity(res & 0xff);
+  state->cc.P = parity(res & 0xff, 8);
 
   *r = res & 0xff;
 }
@@ -86,7 +95,7 @@ void decrement_8bit_register(State8080 *state, uint8_t *r) {
   uint8_t res = (*r) - 1;
   state->cc.Z = (res == 0);
   state->cc.S = ((res & 0x80) != 0);
-  state->cc.P = parity(res);
+  state->cc.P = parity(res, 8);
 
   (*r) = res;
 }
@@ -97,6 +106,14 @@ void decrement_8bit_register_pair(uint8_t *r1, uint8_t *r2) {
 
   (*r1) = val >> 8;
   (*r2) = val & 0xff;
+}
+
+compare_A_with_8bit_val(State8080 *state, uint8_t val) {
+  uint8_t x = state->A - val;
+  state->cc.Z = (x == 0);
+  state->cc.S = (0x80 == (x & 0x80));
+  state->cc.P = parity(x, 8);
+  state->cc.CY = (state->A < val);
 }
 
 void add_register_pair_to_HL(State8080 *state, const uint8_t *r1, const uint8_t *r2) {
@@ -148,10 +165,9 @@ int emulate_8080(State8080 *state)
       break;
     }
     case 0x07: {        // RLC  (rotate A left)
-      uint16_t res = state->A << 1;
-      state->cc.CY = (TEST_BIT(res, 8) == 1);
-      if (res & 0x100) SET_BIT(res, 0);
-      state->A = res & 0xff;
+      state->cc.CY = ((state->A & 0x80) == 0x80);
+      uint8_t val = state->A;   
+      state->A = ((val & 0x80) >> 7) | ((val << 1) & 0xff);
       break;
     }
     case 0x08: {        // NOP
@@ -182,10 +198,9 @@ int emulate_8080(State8080 *state)
       break;
     }
     case 0x0f: {       // RRC
-      uint16_t res = state->A;
-      if (TEST_BIT(res, 0)) SET_BIT(res, 8);
-      res = res >> 1;
-      state->A = res;
+      state->cc.CY = (state->A & 1 == 1);
+      uint8_t val = state->A;   
+      state->A = ((val & 1) << 7) | (val >> 1);
       break;
     }
     case 0x10: {       // NOP
@@ -216,6 +231,9 @@ int emulate_8080(State8080 *state)
       break;
     }
     case 0x17: {       // RAL
+      uint8_t val = state->A;   
+      state->A = state->cc.CY | ((val << 1) & 0xff);
+      state->cc.CY = ((state->A & 0x80) == 0x80);
       break;
     }
     case 0x18: {       // NOP
@@ -246,6 +264,9 @@ int emulate_8080(State8080 *state)
       break;
     }
     case 0x1f: {       // RAR
+      state->cc.CY = (state->A & 1 == 1);
+      uint8_t val = state->A;
+      state->A = (state->cc.CY << 7) | (val >> 1);
       break;
     }
     case 0x20: {       // NOP
@@ -304,6 +325,7 @@ int emulate_8080(State8080 *state)
       break;
     }
     case 0x2f: {       // CMA
+      state->A = ~state->A;
       break;
     }
     case 0x30: {       // NOP
@@ -355,6 +377,7 @@ int emulate_8080(State8080 *state)
       break;
     }
     case 0x3f: {       // CMC
+      state->cc.CY = ~state->cc.CY;
       break;
     }
     case 0x40: {       // MOV    B,B
@@ -718,30 +741,41 @@ int emulate_8080(State8080 *state)
       break;
     }
     case 0xb8: {       // CMP    B
+      compare_A_with_8bit_val(state, state->B);
       break;
     }
     case 0xb9: {       // CMP    C
+      compare_A_with_8bit_val(state, state->C);
       break;
     }
     case 0xba: {       // CMP    D
+      compare_A_with_8bit_val(state, state->D);
       break;
     }
     case 0xbb: {       // CMP    E
+      compare_A_with_8bit_val(state, state->E);
       break;
     }
     case 0xbc: {       // CMP    H
+      compare_A_with_8bit_val(state, state->H);
       break;
     }
     case 0xbd: {       // CMP    L
+      compare_A_with_8bit_val(state, state->L);
       break;
     }
     case 0xbe: {       // CMP    M
+      uint16_t val_addr = (state->H << 8) | state->L;
+      uint8_t val = state->memory[val_addr];
+      compare_A_with_8bit_val(state, val);
       break;
     }
     case 0xbf: {       // CMP    A
+      compare_A_with_8bit_val(state, state->A);
       break;
     }
     case 0xc0: {       // RNZ
+      if (state->cc.Z == 0) call_return(state);
       break;
     }
     case 0xc1: {       // POP    B
@@ -757,6 +791,11 @@ int emulate_8080(State8080 *state)
       break;
     }
     case 0xc4: {       // CNZ
+      if (state->cc.Z == 0) {
+        const uint16_t addr = (opcode[2] << 8) | opcode[1];
+        call_addr(state, addr);
+      }
+      else state->PC += 2;
       break;
     }
     case 0xc5: {       // PUSH   B
@@ -766,12 +805,15 @@ int emulate_8080(State8080 *state)
       break;
     }
     case 0xc7: {       // RST    0
+      call_addr(state, 0x00);
       break;
     }
     case 0xc8: {       // RZ
+      if (state->cc.Z != 0) call_return(state);
       break;
     }
     case 0xc9: {       // RET
+      call_return(state);
       break;
     }
     case 0xca: {       // JZ
@@ -783,25 +825,34 @@ int emulate_8080(State8080 *state)
       break;
     }
     case 0xcc: {       // CZ
+      if (state->cc.Z != 0) {
+        const uint16_t addr = (opcode[2] << 8) | opcode[1];
+        call_addr(state, addr);
+      }
+      else state->PC += 2;
       break;
     }
     case 0xcd: {       // CALL
+      const uint16_t addr = (opcode[2] << 8) | opcode[1];
+      call_addr(state, addr);
       break;
     }
     case 0xce: {       // ACI
       break;
     }
-    case 0xcf: {       // RST
+    case 0xcf: {       // RST   1
+      call_addr(state, 0x08);
       break;
     }
     case 0xd0: {       // RNC
+      if (state->cc.CY == 0) call_return(state);
       break;
     }
     case 0xd1: {       // POP    D
       break;
     }
     case 0xd2: {       // JNC
-      if (state->cc.CY != 0) state->PC = (opcode[2] << 8) | opcode[1];
+      if (state->cc.CY == 0) state->PC = (opcode[2] << 8) | opcode[1];
       else state->PC += 2;
       break;
     }
@@ -809,6 +860,11 @@ int emulate_8080(State8080 *state)
       break;
     }
     case 0xd4: {       // CNC
+      if (state->cc.CY == 0) {
+        const uint16_t addr = (opcode[2] << 8) | opcode[1];
+        call_addr(state, addr);
+      }
+      else state->PC += 2;
       break;
     }
     case 0xd5: {       // PUSH   D
@@ -817,17 +873,19 @@ int emulate_8080(State8080 *state)
     case 0xd6: {       // SUI
       break;
     }
-    case 0xd7: {       // RST
+    case 0xd7: {       // RST   2
+      call_addr(state, 0x10);
       break;
     }
     case 0xd8: {       // RC
+      if (state->cc.CY != 0) call_return(state);
       break;
     }
     case 0xd9: {       // NOP
       break;
     }
     case 0xda: {       // JC
-      if (state->cc.Z == 0) state->PC = (opcode[2] << 8) | opcode[1];
+      if (state->cc.CY != 0) state->PC = (opcode[2] << 8) | opcode[1];
       else state->PC += 2;
       break;
     }
@@ -843,10 +901,12 @@ int emulate_8080(State8080 *state)
     case 0xde: {       // SBI
       break;
     }
-    case 0xdf: {       // RST
+    case 0xdf: {       // RST   3
+      call_addr(state, 0x18);
       break;
     }
     case 0xe0: {       // RPO
+      if (state->cc.P == 0) call_return(state);
       break;
     }
     case 0xe1: {       // POP    H
@@ -861,21 +921,38 @@ int emulate_8080(State8080 *state)
       break;
     }
     case 0xe4: {       // CPO
+      if (state->cc.P == 0) {
+        const uint16_t addr = (opcode[2] << 8) | opcode[1];
+        call_addr(state, addr);
+      }
+      else state->PC += 2;
       break;
     }
     case 0xe5: {       // PUSH   H
       break;
     }
     case 0xe6: {       // ANI
+      uint8_t res = state->A & opcode[1];
+      state->cc.Z = (res == 0);
+      state->cc.S = ((res & 0x80) != 0);
+      state->cc.P = parity(res, 8);
+      state->cc.CY = 0;
+
+      state->A = res;
+      state->PC++;
       break;
     }
-    case 0xe7: {       // RST
+    case 0xe7: {       // RST   4
+      call_addr(state, 0x20);
       break;
     }
     case 0xe8: {       // RPE
+      if (state->cc.CY != 0) call_return(state);
       break;
     }
     case 0xe9: {       // PCHL
+      uint16_t val = (state->H << 8) | state->L;
+      state->PC = val;
       break;
     }
     case 0xea: {       // JPE
@@ -887,6 +964,11 @@ int emulate_8080(State8080 *state)
       break;
     }
     case 0xec: {       // CPE
+      if (state->cc.Z != 0) {
+        const uint16_t addr = (opcode[2] << 8) | opcode[1];
+        call_addr(state, addr);
+      }
+      else state->PC += 2;
       break;
     }
     case 0xed: {       // NOP
@@ -895,10 +977,12 @@ int emulate_8080(State8080 *state)
     case 0xee: {       // XRI
       break;
     }
-    case 0xef: {       // RST
+    case 0xef: {       // RST     5
+      call_addr(state, 0x28);
       break;
     }
     case 0xf0: {       // RP
+      if (state->cc.S == 0) call_return(state);
       break;
     }
     case 0xf1: {       // POP    PSW
@@ -913,6 +997,11 @@ int emulate_8080(State8080 *state)
       break;
     }
     case 0xf4: {       // CP
+      if (state->cc.S == 0) {
+        const uint16_t addr = (opcode[2] << 8) | opcode[1];
+        call_addr(state, addr);
+      }
+      else state->PC += 2;
       break;
     }
     case 0xf5: {       // PUSH   PSW
@@ -921,10 +1010,12 @@ int emulate_8080(State8080 *state)
     case 0xf6: {       // ORI
       break;
     }
-    case 0xf7: {       // RST
+    case 0xf7: {       // RST    6
+      call_addr(state, 0x30);
       break;
     }
     case 0xf8: {       // RM
+      if (state->cc.CY != 0) call_return(state);
       break;
     }
     case 0xf9: {       // SPHL
@@ -939,15 +1030,24 @@ int emulate_8080(State8080 *state)
       break;
     }
     case 0xfc: {       // CM
+      if (state->cc.S != 0) {
+        const uint16_t addr = (opcode[2] << 8) | opcode[1];
+        call_addr(state, addr);
+      }
+      else state->PC += 2;
       break;
     }
     case 0xfd: {       // NOP
       break;
     }
     case 0xfe: {       // CPI
+      uint8_t val = opcode[1];
+      compare_A_with_8bit_val(state, val);
+      state->PC++;
       break;
     }
-    case 0xff: {       // RST
+    case 0xff: {       // RST     7
+      call_addr(state, 0x38);
       break;
     }
 
