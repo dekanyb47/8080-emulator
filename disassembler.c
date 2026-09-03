@@ -1,10 +1,39 @@
 #include <stdio.h>
+#include <stdint.h>
 #include <stdlib.h>
 
 #include "helper.h"
 #include "disassembler.h"
 
-int disassemble_8080_op(const char *buf, const int pc) {
+int read_file_to_buf(const char *filepath, uint8_t ** const buf, long *bufsize) {
+  FILE *fp = fopen(filepath, "rb");
+  if (fp == NULL) die("fopen");
+
+  // get the length of the file
+  if (fseek(fp, 0L, SEEK_END) != 0) die("fseek");
+  const long bufsize_tmp = ftell(fp);
+  if (bufsize_tmp < 0) die("ftell");
+
+  uint8_t *buf_tmp = malloc(bufsize_tmp);
+  if (buf_tmp == NULL) die("malloc");
+
+  // set fp back to the beginning of the file
+  if (fseek(fp, 0L, SEEK_SET) != 0) die("fseek");
+
+  // TODO: commented line doesn't work!
+  // if (fgets(buf_tmp, sizeof(char) * (bufsize_tmp + 1), fp) == NULL) return 1;
+  for (long i = 0; i < bufsize_tmp; i++) {
+    char c = fgetc(fp);
+    buf_tmp[i] = c;
+  }
+  
+  *bufsize = bufsize_tmp;
+  *buf = buf_tmp;
+
+  return 0;
+}
+
+int disassemble_8080_op(const uint8_t *buf, const int pc) {
   const unsigned char *code = (const unsigned char *)&buf[pc];
   int opbytes = 1;
   printf("%04x\t", pc);
@@ -46,10 +75,10 @@ int disassemble_8080_op(const char *buf, const int pc) {
     case 0x20: printf("NOP"); break;
     case 0x21: printf("LXI    HL,#$%02x%02x", code[2], code[1]); opbytes=3; break;
     case 0x22: printf("SHLD   $%02x%02x,HL", code[2], code[1]); opbytes=3; break;
-    case 0x23: printf("INX    D"); break;
-    case 0x24: printf("INR    D"); break;
-    case 0x25: printf("DCR    D"); break;
-    case 0x26: printf("MVI    D,#$%02x", code[1]); opbytes=2; break;
+    case 0x23: printf("INX    H"); break;
+    case 0x24: printf("INR    H"); break;
+    case 0x25: printf("DCR    H"); break;
+    case 0x26: printf("MVI    H,#$%02x", code[1]); opbytes=2; break;
     case 0x27: printf("DAA"); break;
     case 0x28: printf("NOP"); break;
     case 0x29: printf("DAD    H"); break;
@@ -70,7 +99,7 @@ int disassemble_8080_op(const char *buf, const int pc) {
     case 0x37: printf("STC"); break;
     case 0x38: printf("NOP"); break;
     case 0x39: printf("DAD    SP"); break;
-    case 0x3a: printf("LDA    A,%02x%02x", code[2], code[1]); opbytes=3; break;
+    case 0x3a: printf("LDA    A,($%02x%02x)", code[2], code[1]); opbytes=3; break;
     case 0x3b: printf("DCX    SP"); break;
     case 0x3c: printf("INR    A"); break;
     case 0x3d: printf("DCR    A"); break;
@@ -285,13 +314,13 @@ int disassemble_8080_op(const char *buf, const int pc) {
 
   }
 
-  printf("\n");
+  // printf("\n");
   return opbytes;
 }
 
 // TODO: split into multiple functions
 int disassemble_8080_code(const char *filepath) {
-  char *buf = NULL;
+  uint8_t *buf = NULL;
   long bufsize = 0;
 
   if (read_file_to_buf(filepath, &buf, &bufsize) != 0) return 1;
@@ -305,14 +334,14 @@ int disassemble_8080_code(const char *filepath) {
   return 0;
 }
 
-int main(int argc, char *argv[]) {
-  if (argc == 1) {
-    printf("Please specify the file path as the input argument!\n");
-    return 1;
-  }
+// int main(int argc, char *argv[]) {
+//   if (argc == 1) {
+//     printf("Please specify the file path as the input argument!\n");
+//     return 1;
+//   }
 
 
-  disassemble_8080_code(argv[1]);
+//   disassemble_8080_code(argv[1]);
 
-  return 0;
-}
+//   return 0;
+// }

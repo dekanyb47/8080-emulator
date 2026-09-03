@@ -5,6 +5,7 @@ tempCodeRunnerFile.c
 # Compiled files
 disassembler
 shell
+emulator
 
 # Games for the 8080
 alieninv

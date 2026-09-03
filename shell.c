@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "disassembler.h"
 #include "helper.h"
@@ -29,43 +30,65 @@ typedef struct State8080 {
   uint8_t int_enable;
 } State8080;
 
+uint8_t *init_8080_memory(char filepath[]) {
+  uint8_t *memory = calloc(0x8000, 1);
+  if (memory == NULL) die("calloc");
+
+  FILE *fp = fopen(filepath, "rb");
+  if (fp == NULL) die("fopen");
+
+  // read the ROM
+  size_t ret = fread(memory, 1, 0x2000, fp);
+  printf("debug: %ld bytes read into memory\n", ret);
+  if (ret == 0) die("fread");
+
+  fclose(fp);
+  return memory;
+}
+
 // TODO: finish and rework reading to memory
 State8080 *init_state(char filepath[]) {
   State8080 *state = calloc(1, sizeof(State8080));
-  uint8_t *memory = malloc(4096);
-  if (state == NULL || memory == NULL) return NULL;
+  if (state == NULL) die("malloc");
 
-  read_file_to_buf(filepath, &memory, sizeof(memory));
-
+  uint8_t *memory = init_8080_memory(filepath);
+  if (memory == NULL) die("init_memory");
   state->memory = memory;
+
+  return state;
 }
 
 int parity_8bit(uint8_t val) {
   uint8_t curr = val;
   uint8_t set_bytes = 0;
-  if (curr >= 0x80) curr -= 0x80; set_bytes++;
-  if (curr >= 0x40) curr -= 0x40; set_bytes++;
-  if (curr >= 0x20) curr -= 0x20; set_bytes++;
-  if (curr >= 0x10) curr -= 0x10; set_bytes++;
-  if (curr >= 0x08) curr -= 0x08; set_bytes++;
-  if (curr >= 0x04) curr -= 0x04; set_bytes++;
-  if (curr >= 0x02) curr -= 0x02; set_bytes++;
-  if (curr >= 0x01) curr -= 0x01; set_bytes++;
+  if (curr >= 0x80) {curr -= 0x80; set_bytes++;}
+  if (curr >= 0x40) {curr -= 0x40; set_bytes++;}
+  if (curr >= 0x20) {curr -= 0x20; set_bytes++;}
+  if (curr >= 0x10) {curr -= 0x10; set_bytes++;}
+  if (curr >= 0x08) {curr -= 0x08; set_bytes++;}
+  if (curr >= 0x04) {curr -= 0x04; set_bytes++;}
+  if (curr >= 0x02) {curr -= 0x02; set_bytes++;}
+  if (curr >= 0x01) {curr -= 0x01; set_bytes++;}
 
-  return (set_bytes % 2) ? 1 : 0;
+  return (set_bytes % 2 == 0) ? 1 : 0;
 }
 
+
+void jump_addr(State8080 *state, const uint16_t addr) {
+  state->PC = addr - 1;       // take away one because of the program counter increment after every instruction
+}
 
 void call_addr(State8080 *state, const uint16_t addr) {
   uint16_t ret_addr = state->PC+2;
   state->memory[state->SP - 1] = (ret_addr >> 8) & 0xff;
   state->memory[state->SP - 2] = ret_addr & 0xff;
   state->SP -= 2;
-  state->PC = addr;
+  state->PC = addr - 1;       // take away one because of the program counter increment after every instruction
 }
 
 void call_return(State8080 *state) {
-  state->PC = (state->memory[state->SP + 1] << 8) | state->memory[state->SP];
+  uint16_t ret_addr = (state->memory[state->SP + 1] << 8) | state->memory[state->SP];
+  state->PC = ret_addr - 1;       // take away one because of the program counter increment after every instruction
   state->SP += 2;
 }
 
@@ -235,7 +258,7 @@ void move_immediate_val_to_8bit_register(State8080 *state, const unsigned char *
   state->PC += 1;
 }
 
-int emulate_8080(State8080 *state)
+int emulate_8080_op(State8080 *state)
 {
   unsigned char *opcode = &state->memory[state->PC];
   disassemble_8080_op(state->memory, state->PC);
@@ -305,7 +328,7 @@ int emulate_8080(State8080 *state)
       break;
     }
     case 0x0f: {       // RRC
-      state->cc.CY = (state->A & 1 == 1);
+      state->cc.CY = ((state->A & 1) == 1);
       uint8_t val = state->A;   
       state->A = ((val & 1) << 7) | (val >> 1);
       break;
@@ -373,7 +396,7 @@ int emulate_8080(State8080 *state)
       break;
     }
     case 0x1f: {       // RAR
-      state->cc.CY = (state->A & 1 == 1);
+      state->cc.CY = ((state->A & 1) == 1);
       uint8_t val = state->A;
       state->A = (state->cc.CY << 7) | (val >> 1);
       break;
@@ -728,38 +751,32 @@ int emulate_8080(State8080 *state)
     }
     case 0x70: {       // MOV    M,B
       uint16_t offset = (state->H << 8) | state->L;
-      uint8_t m_val = state->memory[offset];
-      move_8bit(&m_val, state->B);
+      move_8bit(&state->memory[offset], state->B);
       break;
     }
     case 0x71: {       // MOV    M,C
       uint16_t offset = (state->H << 8) | state->L;
-      uint8_t m_val = state->memory[offset];
-      move_8bit(&m_val, state->C);
+      move_8bit(&state->memory[offset], state->C);
       break;
     }
     case 0x72: {       // MOV    M,D
       uint16_t offset = (state->H << 8) | state->L;
-      uint8_t m_val = state->memory[offset];
-      move_8bit(&m_val, state->D);
+      move_8bit(&state->memory[offset], state->D);
       break;
     }
     case 0x73: {       // MOV    M,E
       uint16_t offset = (state->H << 8) | state->L;
-      uint8_t m_val = state->memory[offset];
-      move_8bit(&m_val, state->E);
+      move_8bit(&state->memory[offset], state->E);
       break;
     }
     case 0x74: {       // MOV    M,H
       uint16_t offset = (state->H << 8) | state->L;
-      uint8_t m_val = state->memory[offset];
-      move_8bit(&m_val, state->H);
+      move_8bit(&state->memory[offset], state->H);
       break;
     }
     case 0x75: {       // MOV    M,L
       uint16_t offset = (state->H << 8) | state->L;
-      uint8_t m_val = state->memory[offset];
-      move_8bit(&m_val, state->L);
+      move_8bit(&state->memory[offset], state->L);
       break;
     }
     case 0x76: {       // HLT
@@ -768,8 +785,7 @@ int emulate_8080(State8080 *state)
     }
     case 0x77: {       // MOV    M,A
       uint16_t offset = (state->H << 8) | state->L;
-      uint8_t m_val = state->memory[offset];
-      move_8bit(&m_val, state->A);
+      move_8bit(&state->memory[offset], state->A);
       break;
     }
     case 0x78: {       // MOV    A,B
@@ -1037,7 +1053,7 @@ int emulate_8080(State8080 *state)
     case 0xb6: {       // ORA    M
       uint16_t offset = (state->H << 8) | state->L;
       uint8_t val = state->memory[offset];
-      bitwise_or_with_A(state, state->B);
+      bitwise_or_with_A(state, val);
       break;
     }
     case 0xb7: {       // ORA    A
@@ -1087,12 +1103,12 @@ int emulate_8080(State8080 *state)
       break;
     }
     case 0xc2: {       // JNZ
-      if (state->cc.Z == 0) state->PC = (opcode[2] << 8) | opcode[1];
+      if (state->cc.Z == 0) jump_addr(state, (opcode[2] << 8) | opcode[1]);
       else state->PC += 2;
       break;
     }
     case 0xc3: {       // JMP
-      state->PC = (opcode[2] << 8) | opcode[1];
+      jump_addr(state, (opcode[2] << 8) | opcode[1]);
       break;
     }
     case 0xc4: {       // CNZ
@@ -1125,7 +1141,7 @@ int emulate_8080(State8080 *state)
       break;
     }
     case 0xca: {       // JZ
-      if (state->cc.Z != 0) state->PC = (opcode[2] << 8) | opcode[1];
+      if (state->cc.Z != 0) jump_addr(state, (opcode[2] << 8) | opcode[1]);
       else state->PC += 2;
       break;
     }
@@ -1163,13 +1179,12 @@ int emulate_8080(State8080 *state)
       break;
     }
     case 0xd2: {       // JNC
-      if (state->cc.CY == 0) state->PC = (opcode[2] << 8) | opcode[1];
+      if (state->cc.CY == 0) jump_addr(state, (opcode[2] << 8) | opcode[1]);
       else state->PC += 2;
       break;
     }
     case 0xd3: {       // OUT
-      uint8_t out = opcode[1];
-      state->PC++;
+      printf("Unimplemented instruction: OUT");
       break;
     }
     case 0xd4: {       // CNC
@@ -1201,13 +1216,14 @@ int emulate_8080(State8080 *state)
       break;
     }
     case 0xda: {       // JC
-      if (state->cc.CY != 0) state->PC = (opcode[2] << 8) | opcode[1];
+      if (state->cc.CY != 0) jump_addr(state, (opcode[2] << 8) | opcode[1]);
       else state->PC += 2;
       break;
     }
     case 0xdb: {       // IN
       // uint8_t inp = opcode[1];
-      state->PC++;
+      // state->PC++;
+      printf("Unimplemented instruction: IN");
       break;
     }
     case 0xdc: {       // CC
@@ -1239,7 +1255,7 @@ int emulate_8080(State8080 *state)
       break;
     }
     case 0xe2: {       // JPO
-      if (state->cc.P == 0) state->PC = (opcode[2] << 8) | opcode[1];
+      if (state->cc.P == 0) jump_addr(state, (opcode[2] << 8) | opcode[1]);
       else state->PC += 2;
       break;
     }
@@ -1284,7 +1300,7 @@ int emulate_8080(State8080 *state)
       break;
     }
     case 0xea: {       // JPE
-      if (state->cc.P != 0) state->PC = (opcode[2] << 8) | opcode[1];
+      if (state->cc.P != 0) jump_addr(state, (opcode[2] << 8) | opcode[1]);
       else state->PC += 2;
       break;
     }
@@ -1326,17 +1342,17 @@ int emulate_8080(State8080 *state)
       state->A = state->memory[state->SP + 1];
 
       uint8_t psw = state->memory[state->SP];
-      state->cc.Z = (psw & 0x01 == 0x01);
-      state->cc.S = (psw & 0x02 == 0x02);
-      state->cc.P = (psw & 0x04 == 0x04);
-      state->cc.CY = (psw & 0x08 == 0x08);
-      state->cc.AC = (psw & 0x10 == 0x10);
+      state->cc.Z = ((psw & 0x01) == 0x01);
+      state->cc.S = ((psw & 0x02) == 0x02);
+      state->cc.P = ((psw & 0x04) == 0x04);
+      state->cc.CY = ((psw & 0x08) == 0x08);
+      state->cc.AC = ((psw & 0x10) == 0x10);
 
       state->SP += 2;
       break;
     }
     case 0xf2: {       // JP
-      if (state->cc.S == 0) state->PC = (opcode[2] << 8) | opcode[1];
+      if (state->cc.S == 0) jump_addr(state, (opcode[2] << 8) | opcode[1]);
       else state->PC += 2;
       break;
     }
@@ -1382,7 +1398,7 @@ int emulate_8080(State8080 *state)
       break;
     }
     case 0xfa: {       // JM
-      if (state->cc.S != 0) state->PC = (opcode[2] << 8) | opcode[1];
+      if (state->cc.S != 0) jump_addr(state, (opcode[2] << 8) | opcode[1]);
       else state->PC += 2;
       break;
     }
@@ -1416,18 +1432,23 @@ int emulate_8080(State8080 *state)
       printf("Error: hex '%02x' not recognized!", *opcode);
       return 1;
   }
-
   
-  printf("\tZ=%d, S=%d, P=%d, CY=%d\n", state->cc.Z, state->cc.S, state->cc.P, state->cc.CY);    
-  printf("\tA=$%02x B=$%02x C=$%02x D=$%02x E=$%02x H=$%02x L=$%02x SP=%04x\n",    
+  state->PC++;
+  printf("\tZ=%d, S=%d, P=%d, CY=%d", state->cc.Z, state->cc.S, state->cc.P, state->cc.CY);    
+  printf("\tA=$%02x B=$%02x C=$%02x D=$%02x E=$%02x H=$%02x L=$%02x SP=$%04x\n",    
     state->A, state->B, state->C, state->D,    
     state->E, state->H, state->L, state->SP); 
+  // printf("\n");
   return 0;
 }
 
-int invoke_emulation(FILE *filepath) {
-  State8080 state = {NULL};
-  emulate_8080(&state);
+int invoke_emulation(char filepath[]) {
+  State8080 *state = init_state(filepath);
+  while (1) {
+    emulate_8080_op(state);
+  }
+
+  return 0;
 }
 
 int main(int argc, char *argv[]) {
