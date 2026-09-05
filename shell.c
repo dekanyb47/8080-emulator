@@ -1185,6 +1185,7 @@ int emulate_8080_op(State8080 *state)
     }
     case 0xd3: {       // OUT
       printf("Unimplemented instruction: OUT");
+      state->PC++;
       break;
     }
     case 0xd4: {       // CNC
@@ -1222,8 +1223,8 @@ int emulate_8080_op(State8080 *state)
     }
     case 0xdb: {       // IN
       // uint8_t inp = opcode[1];
-      // state->PC++;
       printf("Unimplemented instruction: IN");
+      state->PC++;
       break;
     }
     case 0xdc: {       // CC
