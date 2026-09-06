@@ -5,7 +5,7 @@ sources
 
 # Compiled files
 disassembler
-shell
+machine
 emulator
 
 # Games for the 8080

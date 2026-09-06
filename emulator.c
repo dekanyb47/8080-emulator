@@ -5,30 +5,7 @@
 
 #include "disassembler.h"
 #include "helper.h"
-
-typedef struct ConditionCodes {
-  uint8_t pad : 3;
-  uint8_t AC : 1;
-  uint8_t CY : 1;
-  uint8_t P : 1;
-  uint8_t S : 1;
-  uint8_t Z : 1;
-} ConditionCodes;
-
-typedef struct State8080 {
-  uint8_t A;
-  uint8_t B;
-  uint8_t C;
-  uint8_t D;
-  uint8_t E;
-  uint8_t H;
-  uint8_t L;
-  uint16_t PC;
-  uint16_t SP;
-  uint8_t *memory;
-  struct ConditionCodes cc;
-  uint8_t int_enable;
-} State8080;
+#include "emulator.h"
 
 uint8_t *init_8080_memory(char filepath[]) {
   uint8_t *memory = calloc(0x8000, 1);
@@ -47,8 +24,8 @@ uint8_t *init_8080_memory(char filepath[]) {
 }
 
 // TODO: finish and rework reading to memory
-State8080 *init_state(char filepath[]) {
-  State8080 *state = calloc(1, sizeof(State8080));
+EmulatorState *init_emulator_state(char filepath[]) {
+  EmulatorState *state = calloc(1, sizeof(EmulatorState));
   if (state == NULL) die("malloc");
 
   uint8_t *memory = init_8080_memory(filepath);
@@ -74,11 +51,11 @@ int parity_8bit(uint8_t val) {
 }
 
 
-void jump_addr(State8080 *state, const uint16_t addr) {
+void jump_addr(EmulatorState *state, const uint16_t addr) {
   state->PC = addr - 1;       // take away one because of the program counter increment after every instruction
 }
 
-void call_addr(State8080 *state, const uint16_t addr) {
+void call_addr(EmulatorState *state, const uint16_t addr) {
   uint16_t ret_addr = state->PC+2;
   state->memory[state->SP - 1] = (ret_addr >> 8) & 0xff;
   state->memory[state->SP - 2] = ret_addr & 0xff;
@@ -86,25 +63,25 @@ void call_addr(State8080 *state, const uint16_t addr) {
   state->PC = addr - 1;       // take away one because of the program counter increment after every instruction
 }
 
-void call_return(State8080 *state) {
+void call_return(EmulatorState *state) {
   uint16_t ret_addr = (state->memory[state->SP + 1] << 8) | state->memory[state->SP];
   state->PC = ret_addr - 1;       // take away one because of the program counter increment after every instruction
   state->SP += 2;
 }
 
-void direct_load_register_pair(State8080 *state, const unsigned char *opcode, uint8_t *r1, uint8_t *r2) {
+void direct_load_register_pair(EmulatorState *state, const unsigned char *opcode, uint8_t *r1, uint8_t *r2) {
   *r1 = opcode[2];
   *r2 = opcode[1];
   state->PC += 2;
 }
 
-void push_stack(State8080 *state, uint8_t val1, uint8_t val2) {
+void push_stack(EmulatorState *state, uint8_t val1, uint8_t val2) {
   state->memory[state->SP - 1] = val1;
   state->memory[state->SP - 2] = val2;
   state->SP -= 2;
 }
 
-void pop_stack(State8080 *state, uint8_t *r1, uint8_t *r2) {
+void pop_stack(EmulatorState *state, uint8_t *r1, uint8_t *r2) {
   *r2 = state->memory[state->SP];
   *r1 = state->memory[state->SP + 1];
   state->SP += 2;
@@ -114,12 +91,12 @@ void move_8bit(uint8_t *dst, uint8_t val) {
   (*dst) = val;
 }
 
-void store_A_indirect(State8080 *state, const uint8_t *r1, const uint8_t *r2) {
+void store_A_indirect(EmulatorState *state, const uint8_t *r1, const uint8_t *r2) {
   const uint16_t offset = ((*r1) << 8) | (*r2);
   state->memory[offset] = state->A;
 }
 
-void load_A_indirect(State8080 *state, uint16_t offset) {
+void load_A_indirect(EmulatorState *state, uint16_t offset) {
   uint8_t val = state->memory[offset];
   state->A = val;
 }
@@ -130,7 +107,7 @@ void increment_8bit_register_pair(uint8_t *r1, uint8_t *r2) {
     (*r1)++;
 }
 
-void increment_8bit_val(State8080 *state, uint8_t *r) {
+void increment_8bit_val(EmulatorState *state, uint8_t *r) {
   uint16_t res = (uint16_t)(*r) + 1;
   state->cc.Z = ((res & 0xff) == 0);
   state->cc.S = ((res & 0x80) != 0);
@@ -139,7 +116,7 @@ void increment_8bit_val(State8080 *state, uint8_t *r) {
   *r = res & 0xff;
 }
 
-void decrement_8bit_val(State8080 *state, uint8_t *r) {
+void decrement_8bit_val(EmulatorState *state, uint8_t *r) {
   uint8_t res = (*r) - 1;
   state->cc.Z = (res == 0);
   state->cc.S = ((res & 0x80) != 0);
@@ -156,7 +133,7 @@ void decrement_8bit_register_pair(uint8_t *r1, uint8_t *r2) {
   (*r2) = val & 0xff;
 }
 
-void add_to_A(State8080 *state, uint8_t val) {
+void add_to_A(EmulatorState *state, uint8_t val) {
   uint16_t res = state->A + val;
 
   state->cc.Z = ((res & 0xff) == 0);
@@ -167,7 +144,7 @@ void add_to_A(State8080 *state, uint8_t val) {
   state->A = res & 0xff;
 }
 
-void add_to_A_with_carry(State8080 *state, uint8_t val) {
+void add_to_A_with_carry(EmulatorState *state, uint8_t val) {
   uint16_t res = state->A + val + (state->cc.CY ? 1 : 0);
 
   state->cc.Z = ((res & 0xff) == 0);
@@ -178,7 +155,7 @@ void add_to_A_with_carry(State8080 *state, uint8_t val) {
   state->A = res & 0xff;
 }
 
-void subtract_from_A(State8080 *state, uint8_t val) {
+void subtract_from_A(EmulatorState *state, uint8_t val) {
   uint16_t res = state->A - val;
 
   state->cc.Z = ((res & 0xff) == 0);
@@ -189,7 +166,7 @@ void subtract_from_A(State8080 *state, uint8_t val) {
   state->A = res & 0xff;
 }
 
-void subtract_from_A_with_carry(State8080 *state, uint8_t val) {
+void subtract_from_A_with_carry(EmulatorState *state, uint8_t val) {
   uint16_t res = state->A - val - (state->cc.CY ? 1 : 0);
 
   state->cc.Z = ((res & 0xff) == 0);
@@ -201,7 +178,7 @@ void subtract_from_A_with_carry(State8080 *state, uint8_t val) {
 }
 
 // assuming it's true that CY is set to 0
-void bitwise_and_with_A(State8080 *state, uint8_t val) {
+void bitwise_and_with_A(EmulatorState *state, uint8_t val) {
   uint8_t res = val & state->A;
 
   state->cc.Z = ((res & 0xff) == 0);
@@ -213,7 +190,7 @@ void bitwise_and_with_A(State8080 *state, uint8_t val) {
 }
 
 // assuming it's true that CY is set to 0
-void xor_with_A(State8080 *state, uint8_t val) {
+void xor_with_A(EmulatorState *state, uint8_t val) {
   uint8_t res = val ^ state->A;
 
   state->cc.Z = ((res & 0xff) == 0);
@@ -225,7 +202,7 @@ void xor_with_A(State8080 *state, uint8_t val) {
 }
 
 // assuming it's true that CY is set to 0
-void bitwise_or_with_A(State8080 *state, uint8_t val) {
+void bitwise_or_with_A(EmulatorState *state, uint8_t val) {
   uint8_t res = val | state->A;
 
   state->cc.Z = ((res & 0xff) == 0);
@@ -236,7 +213,7 @@ void bitwise_or_with_A(State8080 *state, uint8_t val) {
   state->A = res;
 }
 
-void compare_A_with_8bit_val(State8080 *state, uint8_t val) {
+void compare_A_with_8bit_val(EmulatorState *state, uint8_t val) {
   uint8_t x = state->A - val;
   state->cc.Z = (x == 0);
   state->cc.S = (0x80 == (x & 0x80));
@@ -244,7 +221,7 @@ void compare_A_with_8bit_val(State8080 *state, uint8_t val) {
   state->cc.CY = (state->A < val);
 }
 
-void add_16bit_val_to_HL(State8080 *state, uint16_t val) {
+void add_16bit_val_to_HL(EmulatorState *state, uint16_t val) {
   uint32_t hl_val = state->H << 8 | state->L;
   uint32_t res = val + hl_val;
 
@@ -253,12 +230,12 @@ void add_16bit_val_to_HL(State8080 *state, uint16_t val) {
   state->L = res & 0xff;
 }
 
-void move_immediate_val_to_8bit_register(State8080 *state, const unsigned char *opcode, uint8_t *r) {
+void move_immediate_val_to_8bit_register(EmulatorState *state, const unsigned char *opcode, uint8_t *r) {
   (*r) = opcode[1];
   state->PC += 1;
 }
 
-int emulate_8080_op(State8080 *state)
+int emulate_8080_op(EmulatorState *state)
 {
   unsigned char *opcode = &state->memory[state->PC];
   disassemble_8080_op(state->memory, state->PC);
@@ -1183,9 +1160,7 @@ int emulate_8080_op(State8080 *state)
       else state->PC += 2;
       break;
     }
-    case 0xd3: {       // OUT
-      printf("Unimplemented instruction: OUT");
-      state->PC++;
+    case 0xd3: {       // OUT      Machine specific implementation!
       break;
     }
     case 0xd4: {       // CNC
@@ -1221,10 +1196,7 @@ int emulate_8080_op(State8080 *state)
       else state->PC += 2;
       break;
     }
-    case 0xdb: {       // IN
-      // uint8_t inp = opcode[1];
-      printf("Unimplemented instruction: IN");
-      state->PC++;
+    case 0xdb: {       // IN      Machine specific implementation!
       break;
     }
     case 0xdc: {       // CC
@@ -1444,7 +1416,7 @@ int emulate_8080_op(State8080 *state)
 }
 
 int invoke_emulation(char filepath[]) {
-  State8080 *state = init_state(filepath);
+  EmulatorState *state = init_emulator_state(filepath);
   while (1) {
     emulate_8080_op(state);
   }
@@ -1452,13 +1424,13 @@ int invoke_emulation(char filepath[]) {
   return 0;
 }
 
-int main(int argc, char *argv[]) {
-  if (argc == 1) {
-    printf("Please specify the file path as the input argument!\n");
-    return 1;
-  }
+// int main(int argc, char *argv[]) {
+//   if (argc == 1) {
+//     printf("Please specify the file path as the input argument!\n");
+//     return 1;
+//   }
 
-  invoke_emulation(argv[1]);
+//   invoke_emulation(argv[1]);
 
-  return 0;
-}
+//   return 0;
+// }

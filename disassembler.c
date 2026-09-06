@@ -262,7 +262,7 @@ int disassemble_8080_op(const uint8_t *buf, const int pc) {
     case 0xd0: printf("RNC"); break;
     case 0xd1: printf("POP    D"); break;
     case 0xd2: printf("JNC    if NCY: PC,$%02x%02x", code[2], code[1]); opbytes=3; break;
-    case 0xd3: printf("OUT"); opbytes=2; break;
+    case 0xd3: printf("OUT   Port: %02x (Machine specific implementation!)", code[1]); opbytes=2; break;
     case 0xd4: printf("CNC    if NCY: CALL $%02x%02x", code[2], code[1]); opbytes=3; break;
     case 0xd5: printf("PUSH   D"); break;
     case 0xd6: printf("SUI    A,A - #$%02x", code[1]); opbytes=2; break;
@@ -270,7 +270,7 @@ int disassemble_8080_op(const uint8_t *buf, const int pc) {
     case 0xd8: printf("RC"); break;
     case 0xd9: printf("NOP"); break;
     case 0xda: printf("JC     if CY: PC,$%02x%02x", code[2], code[1]); opbytes=3; break;
-    case 0xdb: printf("IN"); opbytes=2; break;
+    case 0xdb: printf("IN   Port: %02x (Machine specific implementation!)", code[1]); opbytes=2; break;
     case 0xdc: printf("CC     if CY: CALL %02x%02x", code[2], code[1]); opbytes=3; break;
     case 0xdd: printf("NOP"); break;
     case 0xde: printf("SBI    A,A - #$%02x - CY", code[1]); opbytes=2; break;
