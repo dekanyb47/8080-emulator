@@ -19,6 +19,7 @@ typedef struct MachineState{
 } MachineState;
 
 MachineState *init_machine_state() {
+  // TODO: some bytes need to be set to always 1.
   uint8_t *inp_ports = malloc(3);
   uint8_t *out_ports = malloc(4);
   MachineState *ms = calloc(sizeof(MachineState), 1);

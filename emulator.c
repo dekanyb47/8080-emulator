@@ -35,6 +35,10 @@ EmulatorState *init_emulator_state(char filepath[]) {
   return state;
 }
 
+void generate_interrupt(EmulatorState *state, uint8_t interrupt_num) {
+  push_stack(state, (state->PC & 0xFF00) >> 8, state->PC & 0x00ff);
+}
+
 int parity_8bit(uint8_t val) {
   uint8_t curr = val;
   uint8_t set_bytes = 0;
