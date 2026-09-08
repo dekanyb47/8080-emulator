@@ -24,5 +24,6 @@ typedef struct EmulatorState {
   uint8_t int_enable;
 } EmulatorState;
 
+void generate_interrupt(EmulatorState *state, uint8_t interrupt_num);
 int emulate_8080_op(EmulatorState *state);
 EmulatorState *init_emulator_state(char filepath[]);

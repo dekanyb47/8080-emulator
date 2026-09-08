@@ -29,14 +29,10 @@ EmulatorState *init_emulator_state(char filepath[]) {
   if (state == NULL) die("malloc");
 
   uint8_t *memory = init_8080_memory(filepath);
-  if (memory == NULL) die("init_memory");
+  if (memory == NULL) die("init_8080_memory");
   state->memory = memory;
 
   return state;
-}
-
-void generate_interrupt(EmulatorState *state, uint8_t interrupt_num) {
-  push_stack(state, (state->PC & 0xFF00) >> 8, state->PC & 0x00ff);
 }
 
 int parity_8bit(uint8_t val) {
@@ -1419,14 +1415,21 @@ int emulate_8080_op(EmulatorState *state)
   return 0;
 }
 
-int invoke_emulation(char filepath[]) {
-  EmulatorState *state = init_emulator_state(filepath);
-  while (1) {
-    emulate_8080_op(state);
-  }
+void generate_interrupt(EmulatorState *state, uint8_t interrupt_num) {
+  push_stack(state, (state->PC & 0xFF00) >> 8, state->PC & 0x00ff);
 
-  return 0;
+  // identical to RST [interrupt_num] instruction
+  state->PC = 8 * interrupt_num;
 }
+
+// int invoke_emulation(char filepath[]) {
+//   EmulatorState *state = init_emulator_state(filepath);
+//   while (1) {
+//     emulate_8080_op(state);
+//   }
+
+//   return 0;
+// }
 
 // int main(int argc, char *argv[]) {
 //   if (argc == 1) {
