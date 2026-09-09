@@ -24,11 +24,11 @@ uint8_t *init_8080_memory(char filepath[]) {
 }
 
 // TODO: finish and rework reading to memory
-EmulatorState *init_emulator_state(char filepath[]) {
+EmulatorState *init_emulator_state(char game_filepath[]) {
   EmulatorState *state = calloc(1, sizeof(EmulatorState));
   if (state == NULL) die("malloc");
 
-  uint8_t *memory = init_8080_memory(filepath);
+  uint8_t *memory = init_8080_memory(game_filepath);
   if (memory == NULL) die("init_8080_memory");
   state->memory = memory;
 
@@ -1427,17 +1427,6 @@ void generate_interrupt(EmulatorState *state, uint8_t interrupt_num) {
 //   while (1) {
 //     emulate_8080_op(state);
 //   }
-
-//   return 0;
-// }
-
-// int main(int argc, char *argv[]) {
-//   if (argc == 1) {
-//     printf("Please specify the file path as the input argument!\n");
-//     return 1;
-//   }
-
-//   invoke_emulation(argv[1]);
 
 //   return 0;
 // }
