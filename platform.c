@@ -55,6 +55,7 @@ void poll_events(MachineState *ms) {
 void handle_timed_tasks(EmulatorState *es, MachineState *ms, PlatformState *ps) {
   poll_events(ms);
 
+  // temporary lines for debugging SDL
   if (!SDL_SetRenderTarget(ps->renderer, ps->texture)) die("SDL_SetRenderTarget");
   if (!SDL_SetRenderDrawColor(ps->renderer, 0xff, 0, 0, 0)) die("SDL_SetRenderDrawColor");
   
@@ -75,9 +76,14 @@ void init_program(char game_filepath[], EmulatorState **es, MachineState **ms, P
 void start_main_loop(EmulatorState *es, MachineState *ms, PlatformState *ps) {
   // TODO: add a delay to help with performance
   while (!ms->done) {
-    // handle_8080_instruction(es, ms);
+    handle_8080_instruction(es, ms);
     handle_timed_tasks(es, ms, ps);
   }
+}
+
+// TODO: free memory, close window, etc.
+void shutdown_program() {
+
 }
 
 int main(int argc, char *argv[]) {
@@ -92,6 +98,8 @@ int main(int argc, char *argv[]) {
   init_program(argv[1], &emulator_state, &machine_state, &platform_state);
 
   start_main_loop(emulator_state, machine_state, platform_state);
+
+  shutdown_program();
 
   return 0;
 }
