@@ -22,6 +22,13 @@ MachineState *init_machine_state() {
   return ms;
 }
 
+void free_machine_state(MachineState *ms) {
+  free(ms->inp_ports);
+  free(ms->out_ports);
+
+  free(ms);
+}
+
 void machine_key_down(MachineState *ms, int sym) {
   printf("key pressed down: %d\n", sym);
   switch (sym) {

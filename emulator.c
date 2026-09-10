@@ -16,7 +16,6 @@ uint8_t *init_8080_memory(char filepath[]) {
 
   // read the ROM
   size_t ret = fread(memory, 1, 0x2000, fp);
-  printf("debug: %ld bytes read into memory\n", ret);
   if (ret == 0) die("fread");
 
   fclose(fp);
@@ -33,6 +32,11 @@ EmulatorState *init_emulator_state(char game_filepath[]) {
   state->memory = memory;
 
   return state;
+}
+
+void free_emulator_state(EmulatorState *es) {
+  free(es->memory);
+  free(es);
 }
 
 int parity_8bit(uint8_t val) {
