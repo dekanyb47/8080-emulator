@@ -10,6 +10,7 @@ typedef struct PlatformState {
   SDL_Renderer *renderer;
   SDL_Texture *texture;
   uint32_t *pixel_buf;
+  uint32_t completed_cycles;
 } PlatformState;
 
 #define VRAM_ADDR 0x2400
@@ -54,8 +55,7 @@ PlatformState *init_platform_state(EmulatorState *es) {
   platform_state->renderer = renderer;  
 
   // TODO: screen rotation (anticlockwise 90 degrees)
-  // TODO: incorrect rendering to screen
-  SDL_Texture *texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, 300, 300);
+  SDL_Texture *texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, 256, 224);
   uint32_t *formatted_vram = format_vram(es->memory, VRAM_ADDR, VRAM_LEN);
   SDL_UpdateTexture(texture, NULL, formatted_vram, 256 * 4);
   platform_state->texture = texture;
@@ -89,11 +89,11 @@ void poll_sdl_events(MachineState *ms) {
   }
 }
 
-void update_window(PlatformState *ps) {
-  // temporary lines for testing
-  // SDL_SetRenderTarget(ps->renderer, ps->texture);
-  // SDL_RenderClear(ps->renderer);
-
+// TODO: optimize 
+// TODO: program mysteriously crashes because of this function
+void update_window(EmulatorState *es, PlatformState *ps) {
+  uint32_t *formatted_vram = format_vram(es->memory, VRAM_ADDR, VRAM_LEN);
+  SDL_UpdateTexture(ps->texture, NULL, formatted_vram, 256 * 4);
   SDL_SetRenderTarget(ps->renderer, NULL);
   SDL_RenderCopy(ps->renderer, ps->texture, NULL, NULL);
   SDL_RenderPresent(ps->renderer);
@@ -109,6 +109,18 @@ void handle_interrupts(EmulatorState *es, MachineState *ms) {
   }
 }
 
+// since CPU is 2MHz, it can do 2000000 / 60 = 33333.33 cycles per frame.
+// two interrupts are generated, one during the middle of the frame, one at the end of the frame.
+void run_cpu_1_frame(EmulatorState *es, MachineState *ms, uint16_t *cycles_done) {
+  while (*cycles_done < 16667) *cycles_done += handle_8080_instruction(es, ms);
+  if (es->int_enable) generate_interrupt(es, 1);
+  while (*cycles_done < 33333) *cycles_done += handle_8080_instruction(es, ms);  
+  if (es->int_enable) generate_interrupt(es, 2);
+
+  *cycles_done -= 33333;
+}
+
+
 // TODO: move to separate file
 void init_program(char game_filepath[], EmulatorState **es, MachineState **ms, PlatformState **ps) {  
   *es = init_emulator_state(game_filepath);
@@ -117,12 +129,20 @@ void init_program(char game_filepath[], EmulatorState **es, MachineState **ms, P
 }
 
 void start_main_loop(EmulatorState *es, MachineState *ms, PlatformState *ps) {
-  // TODO: add internal clock
+  // TODO: finish reworking with the clock implemented
+  // TODO: make it so that event polling and window updating is done before SDL_Delay is called.
+  uint16_t cycles_done = 0;
+  uint32_t frame_start = SDL_GetTicks();
+
   while (!ms->done) {
-    handle_8080_instruction(es, ms);
-    handle_interrupts(es, ms);
+    // handle_8080_instruction(es, ms);
+    // handle_interrupts(es, ms);
+    run_cpu_1_frame(es, ms, &cycles_done);
     poll_sdl_events(ms);
-    update_window(ps);
+    update_window(es, ps);
+    
+    SDL_Delay(16 - (SDL_GetTicks() - frame_start));
+    frame_start = SDL_GetTicks();
   }
 }
 

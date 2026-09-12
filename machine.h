@@ -11,7 +11,7 @@ typedef struct MachineState{
 } MachineState;
 
 MachineState *init_machine_state();
-void handle_8080_instruction(EmulatorState *es, MachineState *ms);
+uint8_t handle_8080_instruction(EmulatorState *es, MachineState *ms);
 void machine_key_down(MachineState *ms, int sym);
 void machine_key_up(MachineState *ms, int sym);
 void free_machine_state(MachineState *ms);

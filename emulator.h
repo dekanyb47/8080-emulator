@@ -25,6 +25,7 @@ typedef struct EmulatorState {
 } EmulatorState;
 
 void generate_interrupt(EmulatorState *state, uint8_t interrupt_num);
-int emulate_8080_op(EmulatorState *state);
+uint8_t get_opcode_cycle_count(EmulatorState *state, unsigned char opcode);
+uint8_t emulate_8080_op(EmulatorState *state);
 EmulatorState *init_emulator_state(char filepath[]);
 void free_emulator_state(EmulatorState *es);
